@@ -5,13 +5,28 @@ import Button from '@/components/ui/Button'
 import logoIpb from '@/assets/logo-ipb.png'
 
 const ROLES = ['mahasiswa', 'staff', 'admin']
+const DEMO_ACCOUNTS = {
+  mahasiswa: {
+    email: 'lontongsagu05@gmail.com',
+    password: 'Password123!',
+  },
+  staff: {
+    email: 'mardybeom@gmail.com',
+    password: 'Password123!',
+  },
+  admin: {
+    email: 'ghaniandaw@gmail.com',
+    password: 'Password123!',
+  },
+}
 
 export default function Login() {
   const [role, setRole] = useState('mahasiswa')
-  const [email, setEmail] = useState('quina@apps.ipb.ac.id')
-  const [password, setPassword] = useState('Password123!')
+  const [email, setEmail] = useState(DEMO_ACCOUNTS.mahasiswa.email)
+  const [password, setPassword] = useState(DEMO_ACCOUNTS.mahasiswa.password)
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
+  const activeDemoAccount = DEMO_ACCOUNTS[role]
   
   const { login } = useAuth()
   const navigate = useNavigate()
@@ -19,16 +34,8 @@ export default function Login() {
   const handleRoleChange = (selectedRole) => {
     setRole(selectedRole)
     setErrorMsg('')
-    if (selectedRole === 'staff') {
-      setEmail('staff@apps.ipb.ac.id')
-      setPassword('Password123!')
-    } else if (selectedRole === 'admin') {
-      setEmail('admin@apps.ipb.ac.id')
-      setPassword('Password123!')
-    } else {
-      setEmail('quina@apps.ipb.ac.id')
-      setPassword('Password123!')
-    }
+    setEmail(DEMO_ACCOUNTS[selectedRole].email)
+    setPassword(DEMO_ACCOUNTS[selectedRole].password)
   }
 
   const handleLogin = async (e) => {
@@ -130,7 +137,7 @@ export default function Login() {
           <div className="text-center text-[11px] text-slate-500 pt-4 font-normal bg-slate-50 rounded-lg mt-3 py-2 border border-dashed border-slate-200">
             <div>Akun Demo Aktif:</div>
             <div className="text-slate-700 mt-0.5">
-              <span className="font-bold">{email}</span> / <span className="font-bold">{password}</span>
+              <span className="font-bold">{activeDemoAccount.email}</span> / <span className="font-bold">{activeDemoAccount.password}</span>
             </div>
           </div>
         </div>
