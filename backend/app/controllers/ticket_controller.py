@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from app.database.session import get_db
@@ -12,6 +12,7 @@ from app.models.ticket_note import TicketNote
 from app.models.notification import Notification
 from app.schemas.ticket import TicketCreate, TicketUpdate, TicketBrief, TicketResponse, TicketNoteCreate, TicketNoteResponse
 from app.services.email_service import send_email
+from app.services.pdf_service import generate_academic_letter_pdf_from_ticket
 from app.core.websocket_manager import manager
 from typing import List
 from datetime import datetime
@@ -54,6 +55,19 @@ async def create_ticket(
     """
     try:
         attachments = []
+        normalized_title = payload.title.strip().lower()
+        duplicate_ticket = db.query(Ticket).filter(
+            Ticket.student_id == current_user.id,
+            Ticket.status.in_([TicketStatus.open, TicketStatus.progress]),
+            func.lower(Ticket.title).ilike(f"%{normalized_title}%"),
+        ).first()
+
+        if duplicate_ticket:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Anda sudah membuat permohonan dengan judul serupa. Mohon tunggu proses selesai."
+            )
+
         requested_attachment_ids = set(payload.attachment_ids or [])
         if requested_attachment_ids:
             attachments = db.query(Attachment).filter(
@@ -123,6 +137,11 @@ IPB Academic Help Center
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except Exception as e:
+        db.rollback()
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Gagal membuat tiket: {str(e)}")
 
 
 @router.get("/my", response_model=List[TicketBrief])
@@ -212,7 +231,8 @@ async def update_ticket_status(
     """
     try:
         ticket = db.query(Ticket).filter(Ticket.id == ticket_id).options(
-            joinedload(Ticket.student)
+            joinedload(Ticket.student),
+            joinedload(Ticket.attachments)
         ).first()
         
         if not ticket:
@@ -254,6 +274,27 @@ async def update_ticket_status(
             for attachment in attachments:
                 attachment.ticket_id = ticket.id
 
+        generated_letter = None
+        is_academic_letter = (ticket.form_data or {}).get("request_type") == "academic_letter"
+        should_generate_letter = (
+            payload.status == TicketStatus.resolved
+            and is_academic_letter
+        )
+        if should_generate_letter:
+            generated_prefix = f"surat_akademik_ticket_{ticket.id}_"
+            has_generated_letter = any(
+                (attachment.filepath or "").startswith(generated_prefix)
+                for attachment in (ticket.attachments or [])
+            )
+            if not has_generated_letter:
+                generated_letter = generate_academic_letter_pdf_from_ticket(ticket, output_dir="uploads")
+                db.add(Attachment(
+                    ticket_id=ticket.id,
+                    uploaded_by_id=current_user.id,
+                    filename=generated_letter["filename"],
+                    filepath=generated_letter["filename"],
+                ))
+
         db.commit()
         db.refresh(ticket)
 
@@ -262,8 +303,12 @@ async def update_ticket_status(
             ticket_number = f"#TKT-2026-{ticket.id:04d}"
             
             # 1. DB & WebSocket Notification
-            notif_title = f"Status tiket {ticket_number} diperbarui"
-            notif_msg = f"Status permohonan '{ticket.title}' diubah dari '{old_status.value}' menjadi '{payload.status.value}'."
+            if is_academic_letter and payload.status == TicketStatus.resolved:
+                notif_title = f"Surat akademik {ticket_number} siap diunduh"
+                notif_msg = f"Permohonan '{ticket.title}' telah disetujui staff. PDF surat resmi sudah tersedia di detail tiket."
+            else:
+                notif_title = f"Status tiket {ticket_number} diperbarui"
+                notif_msg = f"Status permohonan '{ticket.title}' diubah dari '{old_status.value}' menjadi '{payload.status.value}'."
             background_tasks.add_task(create_and_push_notification, db, ticket.student_id, notif_title, notif_msg)
 
             # 2. SMTP Transactional Email
@@ -277,6 +322,7 @@ Detail Pembaruan:
 - Judul: {ticket.title}
 - Status Lama: {old_status.value}
 - Status Baru: {payload.status.value}
+{"- Dokumen PDF: sudah tersedia di detail tiket" if generated_letter else ""}
 
 Silakan cek detail permohonan Anda di dashboard IPB Help Center.
 
@@ -289,6 +335,11 @@ IPB Academic Help Center
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except Exception as e:
+        db.rollback()
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Gagal memperbarui tiket: {str(e)}")
 
 
 @router.post("/{ticket_id}/notes", response_model=TicketNoteResponse)

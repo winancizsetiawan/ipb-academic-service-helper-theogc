@@ -10,3 +10,4 @@ email-validator
 pydantic-settings>=2.0.0
 aiosmtplib>=3.0.0
 alembic>=1.11.0
+fpdf2>=2.7.9

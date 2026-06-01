@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import StudentTopbar from '@/components/layout/StudentTopbar'
 import Button from '@/components/ui/Button'
@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/useToast'
 import { useConfirm } from '@/hooks/useConfirm'
 import ToastContainer from '@/components/ui/Toast'
 import ConfirmModal from '@/components/ui/ConfirmModal'
+import { api, useAuth } from '@/contexts/AuthContext'
 
 const SURAT_TYPES = [
   {
@@ -72,17 +73,45 @@ const SURAT_TYPES = [
   },
 ]
 
-const USER = {
-  nama: 'Quina Rizky Dae Yuena Siregar',
-  nim: 'G6401231013',
+const FALLBACK_USER_PROFILE = {
+  nama: 'Mahasiswa IPB',
+  nim: '-',
   prodi: 'Ilmu Komputer',
   fakultas: 'FMIPA',
   angkatan: '2023',
   semester: '5',
   status: 'Aktif',
-  email: 'quina.siregar@apps.ipb.ac.id',
+  email: '-',
   pembimbing: 'Dr. Ir. Budi Santoso, M.Sc.',
   ipk: '3.85',
+}
+
+const buildLetterSummary = (selectedType, fields, userProfile) => {
+  const fieldLines = Object.entries(fields)
+    .filter(([, value]) => value)
+    .map(([key, value]) => `- ${key.replace(/_/g, ' ')}: ${value}`)
+    .join('\n')
+
+  return [
+    `Permohonan ${selectedType.label}`,
+    '',
+    `Mahasiswa: ${userProfile.nama}`,
+    `NIM/NIP: ${userProfile.nim}`,
+    `Email: ${userProfile.email}`,
+    '',
+    'Data permohonan:',
+    fieldLines || '- Tidak ada data tambahan',
+    '',
+    'Catatan: PDF surat resmi hanya boleh diterbitkan setelah permohonan disetujui staff.',
+  ].join('\n')
+}
+
+const getAcademicLetterCategoryId = (categories) => {
+  const preferred = categories.find(category => {
+    const name = (category.nama_kategori || '').toLowerCase()
+    return name.includes('surat') || name.includes('akademik')
+  })
+  return preferred?.id || categories[0]?.id || null
 }
 
 function SuratPreview({ type, formData, user }) {
@@ -206,7 +235,7 @@ function SuratPreview({ type, formData, user }) {
 
           <div className="border-t border-gray-100 pt-4 flex items-center justify-between">
             <div className="text-[10px] text-gray-400">
-              <p>Dokumen ini diterbitkan secara otomatis dan sah secara hukum oleh Sistem IPB Academic Digital Signature</p>
+              <p>Preview dokumen. Versi resmi diterbitkan setelah persetujuan staff layanan akademik.</p>
               <p>Kode verifikasi: IPB-{noSurat.split('/').pop()}-VRF-AUTO</p>
             </div>
             <div className="w-16 h-16 rounded-full border-2 border-solid border-blue-600/70 flex flex-col items-center justify-center rotate-6 bg-blue-50/30">
@@ -250,24 +279,89 @@ export default function GenerateSurat() {
   const navigate   = useNavigate()
   const { toasts, toast, removeToast } = useToast()
   const { confirmState, confirm, closeConfirm } = useConfirm()
+  const { user } = useAuth()
 
   const [step, setStep]         = useState(0)
   const [selType, setSelType]   = useState(null)
   const [formData, setFormData] = useState({})
   const [submitted, setSubmitted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [categories, setCategories] = useState([])
+  const [submittedTicket, setSubmittedTicket] = useState(null)
 
   const selectedType = SURAT_TYPES.find(t => t.id === selType)
+  const userProfile = {
+    ...FALLBACK_USER_PROFILE,
+    nama: user?.nama || FALLBACK_USER_PROFILE.nama,
+    nim: user?.nim_or_nip || FALLBACK_USER_PROFILE.nim,
+    email: user?.email || FALLBACK_USER_PROFILE.email,
+  }
+  const periode = [formData.periode_start, formData.periode_end].filter(Boolean).join(' s.d. ')
+  const previewFormData = {
+    ...formData,
+    periode: formData.periode || periode,
+  }
 
   const handleField = (k, v) => setFormData(p => ({ ...p, [k]: v }))
 
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const response = await api.get('/categories')
+        setCategories(response.data || [])
+      } catch (err) {
+        console.error('Gagal memuat kategori surat:', err)
+      }
+    }
+    loadCategories()
+  }, [])
+
   const handleGenerate = () => {
+    if (!selectedType) return
+
     confirm(
-      'Cetak & Unduh Surat Resmi?',
-      'Sistem akan langsung membubuhkan tanda tangan digital resmi dan mengunduh file PDF surat ini.',
-      () => {
-        setStep(3)
-        setSubmitted(true)
-        toast('Surat berhasil diterbitkan dan siap diunduh!', 'success')
+      'Ajukan Permohonan Surat?',
+      'Permohonan akan dikirim ke staff untuk diverifikasi. PDF resmi baru tersedia setelah disetujui.',
+      async () => {
+        setIsSubmitting(true)
+        try {
+          const response = await api.post('/tickets', {
+            title: `Permohonan ${selectedType.label}`,
+            description: buildLetterSummary(selectedType, previewFormData, userProfile),
+            category_id: getAcademicLetterCategoryId(categories),
+            priority: 'medium',
+            deadline: null,
+            attachment_ids: [],
+            form_data: {
+              request_type: 'academic_letter',
+              surat_type: selectedType.id,
+              surat_label: selectedType.label,
+              fields: previewFormData,
+              preview_user_data: {
+                nama: userProfile.nama,
+                nim: userProfile.nim,
+                email: userProfile.email,
+                prodi: userProfile.prodi,
+                fakultas: userProfile.fakultas,
+                angkatan: userProfile.angkatan,
+                semester: userProfile.semester,
+                status: userProfile.status,
+                ipk: userProfile.ipk,
+              },
+            },
+          })
+
+          setSubmittedTicket(response.data)
+          setStep(3)
+          setSubmitted(true)
+          toast('Permohonan surat berhasil diajukan dan menunggu persetujuan staff.', 'success')
+          setTimeout(() => navigate('/track'), 1400)
+        } catch (err) {
+          console.error(err)
+          toast(`Gagal mengajukan permohonan: ${err.response?.data?.detail || err.message}`, 'error')
+        } finally {
+          setIsSubmitting(false)
+        }
       }
     )
   }
@@ -281,15 +375,15 @@ export default function GenerateSurat() {
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xl">📄</span>
-              <span className="text-[10px] text-ipb-200 tracking-widest uppercase font-semibold">Auto Digital Signature</span>
+              <span className="text-[10px] text-ipb-200 tracking-widest uppercase font-semibold">Staff Approval Required</span>
             </div>
-            <h1 className="text-[22px] font-extrabold mb-1.5">Generate Surat Instan IPB</h1>
-            <p className="text-[12px] text-ipb-200">Pilih jenis surat, isi data, dan dapatkan dokumen resmi bertanda tangan digital langsung tanpa proses menunggu.</p>
+            <h1 className="text-[22px] font-extrabold mb-1.5">Pengajuan Surat Akademik IPB</h1>
+            <p className="text-[12px] text-ipb-200">Pilih jenis surat, isi data, lalu ajukan ke staff. PDF resmi tersedia setelah permohonan disetujui.</p>
           </div>
           <div className="shrink-0 bg-white/10 rounded-xl px-4 py-3 text-right">
             <p className="text-[10px] text-ipb-200">Logged in as</p>
-            <p className="text-[13px] font-bold">{USER.nama.split(' ').slice(0,2).join(' ')}</p>
-            <p className="text-[10px] text-ipb-200">{USER.nim}</p>
+            <p className="text-[13px] font-bold">{userProfile.nama.split(' ').slice(0,2).join(' ')}</p>
+            <p className="text-[10px] text-ipb-200">{userProfile.nim}</p>
           </div>
         </div>
       </div>
@@ -300,7 +394,7 @@ export default function GenerateSurat() {
         {step === 0 && (
           <div>
             <h2 className="text-[15px] font-bold text-ipb-900 mb-1">Pilih Jenis Surat</h2>
-            <p className="text-[11px] text-gray-400 mb-4">Dokumen yang dipilih akan langsung diterbitkan secara digital.</p>
+            <p className="text-[11px] text-gray-400 mb-4">Dokumen yang dipilih akan diajukan ke staff untuk verifikasi dan persetujuan.</p>
             <div className="grid grid-cols-3 gap-3 mb-5">
               {SURAT_TYPES.map(t => (
                 <button key={t.id} onClick={() => setSelType(t.id)}
@@ -319,7 +413,7 @@ export default function GenerateSurat() {
                   <p className="text-[10px] text-gray-500 leading-relaxed mb-2">{t.desc}</p>
                   <div className="flex items-center gap-1">
                     <span className="text-[9px] text-green-600">⚡</span>
-                    <span className="text-[9px] text-green-600 font-bold">Penerbitan Instan</span>
+                    <span className="text-[9px] text-green-600 font-bold">Butuh Persetujuan Staff</span>
                   </div>
                   {selType === t.id && (
                     <div className="mt-2 flex items-center gap-1">
@@ -342,7 +436,7 @@ export default function GenerateSurat() {
           <div className="grid grid-cols-[1fr_320px] gap-5">
             <div>
               <h2 className="text-[15px] font-bold text-ipb-900 mb-1">Isi Data Tambahan</h2>
-              <p className="text-[11px] text-gray-400 mb-4">Lengkapi informasi berikut untuk dicetak langsung pada surat resmi.</p>
+              <p className="text-[11px] text-gray-400 mb-4">Lengkapi informasi berikut untuk diajukan ke staff layanan akademik.</p>
 
               <div className="bg-white rounded-xl border border-ipb-100 shadow-sm p-5 mb-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -352,7 +446,7 @@ export default function GenerateSurat() {
                   <span className="text-[12px] font-bold text-ipb-900">Data Mahasiswa Verified (Sistem)</span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                  {[['Nama Lengkap', USER.nama],['NIM', USER.nim],['Program Studi', USER.prodi],['Fakultas', USER.fakultas],['Angkatan', USER.angkatan],['Semester', USER.semester],['IPK Terakhir', USER.ipk]].map(([k,v]) => (
+                  {[['Nama Lengkap', userProfile.nama],['NIM', userProfile.nim],['Program Studi', userProfile.prodi],['Fakultas', userProfile.fakultas],['Angkatan', userProfile.angkatan],['Semester', userProfile.semester],['IPK Terakhir', userProfile.ipk]].map(([k,v]) => (
                     <div key={k} className="flex items-start gap-2 text-[11px]">
                       <span className="text-gray-400 shrink-0 w-28">{k}</span>
                       <span className="font-semibold text-gray-800">{v}</span>
@@ -399,7 +493,7 @@ export default function GenerateSurat() {
                 )}
                 {selectedType.fields.includes('dosen') && (
                   <FormGroup label="Nama Dosen Pembimbing" required>
-                    <Input defaultValue={USER.pembimbing} onChange={e => handleField('dosen', e.target.value)} />
+                    <Input defaultValue={userProfile.pembimbing} onChange={e => handleField('dosen', e.target.value)} />
                   </FormGroup>
                 )}
                 {selectedType.fields.includes('program') && (
@@ -433,15 +527,15 @@ export default function GenerateSurat() {
                 <div className="space-y-2 text-[11px]">
                   <div className="flex items-center gap-2">
                     <span className="text-green-600">⚡</span>
-                    <span>Metode: <strong>Sistem Instan Otomatis</strong></span>
+                    <span>Metode: <strong>Review Staff</strong></span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-gray-400">✍️</span>
-                    <span>Tanda Tangan Digital Direktur Tersemat</span>
+                    <span>PDF resmi diterbitkan setelah disetujui</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-gray-400">📥</span>
-                    <span>Unduh PDF langsung setelah preview</span>
+                    <span>Download tersedia dari detail tiket</span>
                   </div>
                 </div>
               </div>
@@ -455,16 +549,16 @@ export default function GenerateSurat() {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-[15px] font-bold text-ipb-900">Review Dokumen Resmi</h2>
-                  <p className="text-[11px] text-gray-400">Tanda tangan digital resmi dan stempel akan langsung dibubuhkan.</p>
+                  <p className="text-[11px] text-gray-400">Preview ini hanya pratinjau. PDF resmi dibuat setelah staff menyetujui permohonan.</p>
                 </div>
               </div>
 
-              <SuratPreview type={selectedType} formData={formData} user={USER} />
+              <SuratPreview type={selectedType} formData={previewFormData} user={userProfile} />
 
               <div className="flex justify-between items-center mt-4">
                 <Button variant="ghost" onClick={() => setStep(1)}>← Edit Data</Button>
-                <Button onClick={handleGenerate}>
-                  🖨️ Cetak & Download PDF Resmi
+                <Button onClick={handleGenerate} disabled={isSubmitting}>
+                  {isSubmitting ? 'Mengajukan...' : 'Ajukan Permohonan Surat'}
                 </Button>
               </div>
             </div>
@@ -496,27 +590,28 @@ export default function GenerateSurat() {
             <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center text-4xl mb-4 shadow-md">
               ✓
             </div>
-            <h2 className="text-[22px] font-extrabold text-ipb-900 mb-2">Surat Siap Diunduh!</h2>
-            <p className="text-[13px] text-gray-500 mb-6">Surat <strong>{selectedType?.label}</strong> telah ditandatangani secara digital oleh Direktur Kemahasiswaan IPB.</p>
+            <h2 className="text-[22px] font-extrabold text-ipb-900 mb-2">Permohonan Surat Terkirim</h2>
+            <p className="text-[13px] text-gray-500 mb-6">Permohonan <strong>{selectedType?.label}</strong> berhasil diajukan dan menunggu persetujuan staff.</p>
 
             <div className="bg-white rounded-xl border border-ipb-100 shadow-sm p-5 w-full max-w-md mb-6 text-left">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[11px] font-mono font-bold text-green-600">#SURAT-2026-AUTO</span>
-                <Badge v="approved">Disetujui & Sah</Badge>
+                <span className="text-[11px] font-mono font-bold text-green-600">
+                  {submittedTicket ? `#TKT-2026-${String(submittedTicket.id).padStart(4, '0')}` : '#TKT-2026'}
+                </span>
+                <Badge v="progress">Menunggu Staff</Badge>
               </div>
               <p className="text-[13px] font-bold text-ipb-900 mb-3">{selectedType?.label}</p>
               <div className="w-full bg-gray-100 rounded-full h-1.5">
                 <div className="bg-green-600 h-1.5 rounded-full" style={{ width: '100%' }} />
               </div>
-              <p className="text-[10px] text-green-600 mt-1.5">Dokumen telah selesai digenerate otomatis.</p>
+              <p className="text-[10px] text-green-600 mt-1.5">PDF resmi akan muncul di detail tiket setelah staff menyetujui permohonan.</p>
             </div>
 
             <div className="flex gap-3">
-              <Button variant="secondary" onClick={() => toast('📥 Memulai download file PDF...', 'success')}>📥 Download PDF Sekarang</Button>
-              <Button variant="ghost" onClick={() => { setStep(0); setSelType(null); setFormData({}) }}>
+              <Button variant="ghost" onClick={() => { setStep(0); setSelType(null); setFormData({}); setSubmittedTicket(null); setSubmitted(false) }}>
                 + Buat Surat Lain
               </Button>
-              <Button onClick={() => navigate('/faq')}>Kembali ke Beranda</Button>
+              <Button onClick={() => navigate('/track')}>Lihat Status Tiket</Button>
             </div>
           </div>
         )}

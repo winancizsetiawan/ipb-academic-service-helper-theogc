@@ -89,7 +89,8 @@ export default function StaffRequests() {
   }
 
   const handleUpdateStatus = async () => {
-    if (statusVal === 'resolved' && !uploadedFileId) {
+    const isAcademicLetter = sel?.form_data?.request_type === 'academic_letter'
+    if (statusVal === 'resolved' && !uploadedFileId && !isAcademicLetter) {
       toast('⚠️ Silakan unggah dokumen surat terlebih dahulu untuk menyelesaikan permintaan!', 'error')
       return
     }
@@ -109,7 +110,12 @@ export default function StaffRequests() {
       await api.patch(`/tickets/${sel.id}/status`, payload)
       
       if (statusVal === 'resolved') {
-        toast(`✅ Surat berhasil dikirim ke mahasiswa! Tiket ditandai Selesai.`, 'success')
+        toast(
+          isAcademicLetter
+            ? '✅ Permohonan disetujui. PDF surat dibuat otomatis dan dikirim ke mahasiswa.'
+            : '✅ Surat berhasil dikirim ke mahasiswa! Tiket ditandai Selesai.',
+          'success'
+        )
       } else {
         toast('✅ Status tiket berhasil diperbarui!', 'success')
       }
@@ -299,7 +305,16 @@ export default function StaffRequests() {
                 </select>
               </div>
 
-              {statusVal === 'resolved' && (
+              {statusVal === 'resolved' && sel?.form_data?.request_type === 'academic_letter' && (
+                <div className="mb-4 bg-green-50 border border-green-100 rounded-lg p-3.5">
+                  <p className="text-[11px] font-bold text-green-800 mb-1">PDF surat akan dibuat otomatis</p>
+                  <p className="text-[10px] text-green-700 leading-relaxed">
+                    Karena ini permohonan surat akademik dari halaman Generate Surat, sistem akan membuat PDF fpdf2 dan menautkannya ke tiket saat status disimpan sebagai resolved.
+                  </p>
+                </div>
+              )}
+
+              {statusVal === 'resolved' && sel?.form_data?.request_type !== 'academic_letter' && (
                 <div className="mb-4 bg-green-50 border border-green-100 rounded-lg p-3.5">
                   <label className="block text-[11px] font-bold text-green-800 mb-1.5">📤 Unggah Surat Hasil (.pdf)</label>
                   <input type="file" id="upload-surat" accept=".pdf" className="hidden" onChange={handleFileChange} />

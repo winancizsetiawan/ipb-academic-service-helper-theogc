@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from app.database.session import get_db
@@ -11,10 +12,18 @@ from typing import List
 router = APIRouter(prefix="/faqs", tags=["FAQs"])
 
 @router.get("", response_model=List[FaqResponse])
-def get_faqs(db: Session = Depends(get_db)):
+def get_faqs(keyword: str | None = Query(default=None), db: Session = Depends(get_db)):
     try:
-        faqs = db.query(FAQ).all()
-        return faqs
+        query = db.query(FAQ)
+        if keyword and keyword.strip():
+            like_keyword = f"%{keyword.strip()}%"
+            query = query.filter(
+                or_(
+                    FAQ.question.ilike(like_keyword),
+                    FAQ.answer.ilike(like_keyword),
+                )
+            )
+        return query.all()
     except SQLAlchemyError as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 

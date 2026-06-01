@@ -17,7 +17,7 @@ from app.models.attachment import Attachment
 from app.models.discussion import Discussion, DiscussionReply
 from app.models.notification import Notification
 
-from app.controllers import auth_controller, ticket_controller, faq_controller, category_controller, upload_controller, notification_controller
+from app.controllers import auth_controller, ticket_controller, faq_controller, category_controller, upload_controller, notification_controller, letter_controller
 
 UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
@@ -161,3 +161,4 @@ app.include_router(category_controller.router,   prefix=API)
 app.include_router(ticket_controller.router,     prefix=API)
 app.include_router(upload_controller.router,     prefix=API)
 app.include_router(notification_controller.router, prefix=API)
+app.include_router(letter_controller.router,     prefix=API)

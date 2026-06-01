@@ -99,15 +99,13 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
 @router.post("/forgot-password")
 def forgot_password(payload: ForgotPasswordRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    generic_response = {
-        "status": "success",
-        "message": "Jika email terdaftar, tautan reset kata sandi akan dikirim."
-    }
-
     try:
         user = db.query(User).filter(User.email == payload.email).first()
         if not user:
-            return generic_response
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email tidak terdaftar di dalam sistem kami."
+            )
 
         token = str(uuid.uuid4())
         user.reset_token = token
@@ -115,7 +113,10 @@ def forgot_password(payload: ForgotPasswordRequest, background_tasks: Background
         db.commit()
 
         background_tasks.add_task(send_password_reset_email, user.email, user.nama, token)
-        return generic_response
+        return {
+            "status": "success",
+            "message": "Tautan reset kata sandi telah dikirim ke email Anda."
+        }
     except SQLAlchemyError as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
