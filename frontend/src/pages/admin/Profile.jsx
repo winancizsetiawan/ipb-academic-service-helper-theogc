@@ -4,7 +4,7 @@ import PanelHeader from '@/components/layout/PanelHeader'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import { FormGroup, Input } from '@/components/ui/Input'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/useToast'
 import ToastContainer from '@/components/ui/Toast'
 

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/contexts/AuthContext'
 import Badge from '@/components/ui/Badge'
 import logoIpb from '@/assets/logo-ipb.png'
 

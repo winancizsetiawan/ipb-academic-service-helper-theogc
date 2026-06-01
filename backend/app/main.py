@@ -1,5 +1,7 @@
 import os
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv 
+load_dotenv() 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -13,8 +15,9 @@ from app.models.ticket import Ticket
 from app.models.ticket_note import TicketNote
 from app.models.attachment import Attachment
 from app.models.discussion import Discussion, DiscussionReply
+from app.models.notification import Notification
 
-from app.controllers import auth_controller, ticket_controller, faq_controller, category_controller
+from app.controllers import auth_controller, ticket_controller, faq_controller, category_controller, upload_controller, notification_controller
 
 UPLOAD_DIR = "uploads"
 if not os.path.exists(UPLOAD_DIR):
@@ -27,14 +30,32 @@ async def lifespan(app: FastAPI):
     print("[STARTUP] Tables created successfully. Server is ready!")
 
     print("[STARTUP] Seeding demo accounts...")
+    print(f"[DEBUG ENV] Email Mahasiswa yang terbaca: {os.getenv('EMAIL_TEST_MAHASISWA')}")
     db = SessionLocal()
     try:
         demo_accounts = [
-            {"email": "quina@apps.ipb.ac.id", "nama": "Quina Rizky", "nim_or_nip": "G6401231013", "password": "Password123!", "role": UserRole.mahasiswa},
-            {"email": "staff@apps.ipb.ac.id", "nama": "Budi Santoso", "nim_or_nip": "NIP198512101987031002", "password": "Password123!", "role": UserRole.staff},
-            {"email": "admin@apps.ipb.ac.id", "nama": "Ghanianda W.", "nim_or_nip": "NIP196803101993021001", "password": "Password123!", "role": UserRole.admin}
+            {
+                "email": os.getenv("EMAIL_TEST_MAHASISWA", "quina@apps.ipb.ac.id"), 
+                "nama": "Quina (Mhs)", 
+                "nim_or_nip": "G6401231013", 
+                "password": "Password123!", 
+                "role": UserRole.mahasiswa
+            },
+            {
+                "email": os.getenv("EMAIL_TEST_STAFF", "staff@apps.ipb.ac.id"), 
+                "nama": "Budi (Staff)", 
+                "nim_or_nip": "NIP198512101987031002", 
+                "password": "Password123!", 
+                "role": UserRole.staff
+            },
+            {
+                "email": os.getenv("EMAIL_TEST_ADMIN", "admin@apps.ipb.ac.id"), 
+                "nama": "Ghanianda W.", 
+                "nim_or_nip": "NIP196803101993021001", 
+                "password": "Password123!", 
+                "role": UserRole.admin
+            }
         ]
-
         for account in demo_accounts:
             existing = db.query(User).filter(User.email == account["email"]).first()
             if not existing:
@@ -43,9 +64,13 @@ async def lifespan(app: FastAPI):
                     nama=account["nama"],
                     nim_or_nip=account["nim_or_nip"],
                     hashed_password=hash_password(account["password"]),
-                    role=account["role"]
+                    role=account["role"],
+                    is_verified=True
                 )
                 db.add(new_user)
+            elif not existing.is_verified:
+                existing.is_verified = True
+                db.add(existing)
 
         db.commit()
         print("[STARTUP] Demo accounts seeded successfully.")
@@ -134,3 +159,5 @@ app.include_router(auth_controller.router,       prefix=API)
 app.include_router(faq_controller.router,        prefix=API)
 app.include_router(category_controller.router,   prefix=API)
 app.include_router(ticket_controller.router,     prefix=API)
+app.include_router(upload_controller.router,     prefix=API)
+app.include_router(notification_controller.router, prefix=API)

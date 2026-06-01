@@ -1,7 +1,24 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, date
 from app.models.enums import TicketStatus, TicketPriority
+from app.schemas.attachment import AttachmentResponse
+
+
+class TicketNoteResponse(BaseModel):
+    id: int
+    ticket_id: int
+    author_id: int
+    author_name: Optional[str] = None
+    content: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TicketNoteCreate(BaseModel):
+    content: str
 
 
 class TicketCreate(BaseModel):
@@ -11,6 +28,7 @@ class TicketCreate(BaseModel):
     priority: Optional[TicketPriority] = TicketPriority.medium
     deadline: Optional[date] = None
     form_data: Optional[Dict[str, Any]] = None
+    attachment_ids: Optional[List[int]] = None
 
 
 class TicketUpdate(BaseModel):
@@ -19,6 +37,7 @@ class TicketUpdate(BaseModel):
     staff_id: Optional[int] = None
     deadline: Optional[date] = None
     form_data: Optional[Dict[str, Any]] = None
+    attachment_ids: Optional[List[int]] = None
 
 
 class TicketBrief(BaseModel):
@@ -56,6 +75,8 @@ class TicketResponse(BaseModel):
     form_data: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    attachments: List[AttachmentResponse] = []
+    notes: List[TicketNoteResponse] = []
 
     class Config:
         from_attributes = True

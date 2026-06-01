@@ -1,8 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from '@/context/AuthContext'
+import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 
 import LandingPage from '@/pages/LandingPage'
 import Login from '@/pages/Login'
+import VerifyEmail from '@/pages/VerifyEmail'
+import ForgotPassword from '@/pages/ForgotPassword'
+import ResetPassword from '@/pages/ResetPassword'
 
 import FAQ from '@/pages/mahasiswa/FAQ'
 import Submit from '@/pages/mahasiswa/Submit'
@@ -42,8 +45,8 @@ function AppRoutes() {
     user?.role === 'staff'
       ? '/staff/dashboard'
       : user?.role === 'admin'
-      ? '/admin/dashboard'
-      : '/faq'
+        ? '/admin/dashboard'
+        : '/faq'
 
   return (
     <Routes>
@@ -69,6 +72,22 @@ function AppRoutes() {
             <Login />
           )
         }
+      />
+
+      {/* Verify Email */}
+      <Route
+        path="/verify-email"
+        element={<VerifyEmail />}
+      />
+
+      <Route
+        path="/forgot-password"
+        element={<ForgotPassword />}
+      />
+
+      <Route
+        path="/reset-password"
+        element={<ResetPassword />}
       />
 
       {/* Student Routes */}

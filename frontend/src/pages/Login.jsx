@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '@/context/AuthContext'
+import { useAuth } from '@/contexts/AuthContext'
 import Button from '@/components/ui/Button'
 import logoIpb from '@/assets/logo-ipb.png'
 
@@ -113,7 +113,11 @@ export default function Login() {
               />
             </div>
             <div className="text-right mb-4">
-              <button type="button" className="text-[12px] text-blue-900 cursor-pointer font-semibold hover:underline bg-transparent border-none">
+              <button
+                type="button"
+                onClick={() => navigate('/forgot-password')}
+                className="text-[12px] text-blue-900 cursor-pointer font-semibold hover:underline bg-transparent border-none"
+              >
                 Lupa kata sandi?
               </button>
             </div>

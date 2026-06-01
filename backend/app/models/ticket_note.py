@@ -15,3 +15,7 @@ class TicketNote(Base):
 
     ticket = relationship("Ticket", back_populates="notes")
     author = relationship("User", lazy="joined")
+
+    @property
+    def author_name(self) -> str:
+        return self.author.nama if self.author else None

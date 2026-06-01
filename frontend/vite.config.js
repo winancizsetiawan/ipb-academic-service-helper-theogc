@@ -5,7 +5,9 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: {
+      '@': path.resolve(__dirname, './src')
+    },
   },
   build: {
     outDir: 'dist',
@@ -13,9 +15,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor:  ['react', 'react-dom'],
-          router:  ['react-router-dom'],
-          icons:   ['lucide-react'],
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          icons: ['lucide-react'],
         },
       },
     },
