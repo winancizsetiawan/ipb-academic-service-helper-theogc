@@ -17,7 +17,6 @@ from app.models.ticket_note import TicketNote
 from app.models.attachment import Attachment
 from app.models.discussion import Discussion, DiscussionReply
 from app.models.notification import Notification
-
 from app.controllers import auth_controller, ticket_controller, faq_controller, category_controller, upload_controller, notification_controller, letter_controller
 
 UPLOAD_DIR = "uploads"
@@ -137,22 +136,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Configure CORS based on settings (allow wildcard in dev; explicit origins in production)
 settings = get_settings()
 if isinstance(settings.CORS_ORIGINS, str) and settings.CORS_ORIGINS.strip() not in ("", "*"):
     origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 else:
     origins = ["*"]
 
-# Browsers disallow credentials with wildcard origins. Enable credentials only when origins are explicit.
 allow_credentials = False
 if origins != ["*"]:
     allow_credentials = True
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=allow_credentials,
+    allow_origins=["*"],
+    allow_credentials=false,
     allow_methods=["*"],
     allow_headers=["*"],
 )
