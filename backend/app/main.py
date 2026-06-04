@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 load_dotenv() 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import get_settings
 from fastapi.staticfiles import StaticFiles
 from app.database.session import engine, Base, SessionLocal
 from app.models.user import User
@@ -136,10 +137,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Configure CORS based on settings (allow wildcard in dev; explicit origins in production)
+settings = get_settings()
+if isinstance(settings.CORS_ORIGINS, str) and settings.CORS_ORIGINS.strip() not in ("", "*"):
+    origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+else:
+    origins = ["*"]
+
+# Browsers disallow credentials with wildcard origins. Enable credentials only when origins are explicit.
+allow_credentials = False
+if origins != ["*"]:
+    allow_credentials = True
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
