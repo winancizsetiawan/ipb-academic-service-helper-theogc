@@ -138,12 +138,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://ipb-academic-service-helper-theogc.vercel.app",
-        "https://ipb-academic-service-helper-theogc-gwjgikqpk-winanci-s-projects.vercel.app",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
