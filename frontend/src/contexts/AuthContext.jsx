@@ -3,8 +3,13 @@ import axios from 'axios'
 
 const AuthContext = createContext(null)
 
+const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1'
+const API_BASE = RAW_API_URL.replace(/\/+$/, '')
+const API_BASE_WITH_PATH = /\/api\/v1$/.test(API_BASE) ? API_BASE : API_BASE + '/api/v1'
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1',
+  baseURL: API_BASE_WITH_PATH,
+  withCredentials: true,
 })
 
 export function AuthProvider({ children }) {
@@ -128,7 +133,7 @@ export function AuthProvider({ children }) {
 
     // 1. WebSocket Setup
     const connectWS = () => {
-      const baseURL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/v1'
+      const baseURL = API_BASE_WITH_PATH
       // Construct WebSocket URL
       const wsURL = baseURL.replace(/^http/, 'ws') + '/notifications/ws/' + token
 

@@ -136,20 +136,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-settings = get_settings()
-if isinstance(settings.CORS_ORIGINS, str) and settings.CORS_ORIGINS.strip() not in ("", "*"):
-    origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
-else:
-    origins = ["*"]
-
-allow_credentials = False
-if origins != ["*"]:
-    allow_credentials = True
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials = False,
+    allow_origins=[
+        "https://ipb-academic-service-helper-theogc.vercel.app",
+        "https://ipb-academic-service-helper-theogc-gwjgikqpk-winanci-s-projects.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
