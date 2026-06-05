@@ -1,10 +1,7 @@
-import logging
 import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, status
-
-logger = logging.getLogger(__name__)
 from fastapi.responses import FileResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -124,9 +121,8 @@ async def upload_file(
             "filename": new_attachment.filename,
             "url": new_attachment.url,
         }
-    except SQLAlchemyError as exc:
+    except SQLAlchemyError:
         db.rollback()
-        logger.error("DB error saving attachment for user %s: %s", current_user.id, exc, exc_info=True)
         if os.path.exists(filepath):
             os.remove(filepath)
         raise HTTPException(
