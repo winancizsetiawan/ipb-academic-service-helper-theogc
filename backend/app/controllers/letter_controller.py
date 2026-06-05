@@ -1,12 +1,17 @@
+import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import require_roles
+from app.core.config import get_settings
 from app.models.enums import UserRole
 from app.models.user import User
 from app.services.pdf_service import generate_academic_letter_pdf
+
+logger = logging.getLogger(__name__)
+_settings = get_settings()
 
 router = APIRouter(prefix="/letters", tags=["Letters"])
 
@@ -35,10 +40,11 @@ def generate_letter(
                 "label": payload.surat_label,
             },
             form_data=payload.form_data,
-            output_dir="uploads",
+            output_dir=_settings.UPLOAD_DIR,
         )
     except Exception as exc:
+        logger.error("PDF generation failed: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Gagal membuat PDF surat: {str(exc)}",
+            detail="Gagal membuat PDF surat.",
         )

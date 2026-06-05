@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.exc import SQLAlchemyError
-from app.database.session import get_db
+from app.core.config import get_settings
+from app.database.session import get_db, SessionLocal
 from app.api.deps import get_current_user, require_roles
 from app.models.enums import TicketStatus, UserRole
 from app.models.ticket import Ticket
@@ -11,22 +14,31 @@ from app.models.attachment import Attachment
 from app.models.ticket_note import TicketNote
 from app.models.notification import Notification
 from app.schemas.ticket import TicketCreate, TicketUpdate, TicketBrief, TicketResponse, TicketNoteCreate, TicketNoteResponse
+from app.services.audit_service import audit
 from app.services.email_service import send_email
 from app.services.pdf_service import generate_academic_letter_pdf_from_ticket
 from app.core.websocket_manager import manager
 from typing import List
 from datetime import datetime
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
+_settings = get_settings()
+_UPLOAD_DIR = _settings.UPLOAD_DIR
 
-async def create_and_push_notification(db: Session, user_id: int, title: str, message: str) -> None:
-    """Helper to create an in-app notification in DB and stream it via active WebSocket connections."""
+async def create_and_push_notification(user_id: int, title: str, message: str) -> None:
+    """
+    Background task: creates an in-app notification in a fresh DB session and
+    pushes it via WebSocket.  Uses its own session so it is not affected by the
+    request-scoped session being closed before the task runs.
+    """
+    db = SessionLocal()
     try:
         new_notif = Notification(user_id=user_id, title=title, message=message, is_read=False)
         db.add(new_notif)
         db.commit()
         db.refresh(new_notif)
-        
+
         await manager.send_personal_message(user_id, {
             "type": "notification",
             "data": {
@@ -35,11 +47,14 @@ async def create_and_push_notification(db: Session, user_id: int, title: str, me
                 "title": new_notif.title,
                 "message": new_notif.message,
                 "is_read": new_notif.is_read,
-                "created_at": new_notif.created_at.isoformat() if new_notif.created_at else None
-            }
+                "created_at": new_notif.created_at.isoformat() if new_notif.created_at else None,
+            },
         })
-    except Exception as e:
-        print(f"[NOTIFICATION ERROR] Failed to create/push notification: {str(e)}")
+    except Exception as exc:
+        logger.error("Failed to create/push notification for user %s: %s", user_id, exc, exc_info=True)
+        db.rollback()
+    finally:
+        db.close()
 
 
 @router.post("", response_model=TicketBrief)
@@ -111,7 +126,7 @@ async def create_ticket(
         # 1. DB & WebSocket Notification
         notif_title = f"Tiket {ticket_number} berhasil dibuat"
         notif_msg = f"Permohonan '{new_ticket.title}' telah kami terima dan masuk dalam antrean pelayanan akademik."
-        background_tasks.add_task(create_and_push_notification, db, current_user.id, notif_title, notif_msg)
+        background_tasks.add_task(create_and_push_notification, current_user.id, notif_title, notif_msg)
 
         # 2. SMTP Transactional Email
         email_subject = "Ticket Successfully Created"
@@ -134,44 +149,61 @@ IPB Academic Help Center
         background_tasks.add_task(send_email, current_user.email, email_subject, email_content)
 
         return new_ticket
-    except SQLAlchemyError as e:
+    except SQLAlchemyError as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    except Exception as e:
+        logger.error("DB error creating ticket: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error creating ticket.")
+    except Exception as exc:
         db.rollback()
-        if isinstance(e, HTTPException):
+        if isinstance(exc, HTTPException):
             raise
-        raise HTTPException(status_code=500, detail=f"Gagal membuat tiket: {str(e)}")
+        logger.error("Unexpected error creating ticket: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create ticket.")
 
 
 @router.get("/my", response_model=List[TicketBrief])
 def get_my_tickets(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
-        tickets = db.query(Ticket).filter(Ticket.student_id == current_user.id).options(
-            joinedload(Ticket.student),
-            joinedload(Ticket.category)
-        ).all()
+        tickets = (
+            db.query(Ticket)
+            .filter(Ticket.student_id == current_user.id)
+            .options(joinedload(Ticket.student), joinedload(Ticket.category))
+            .order_by(Ticket.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         return tickets
-    except SQLAlchemyError as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except SQLAlchemyError as exc:
+        logger.error("DB error fetching tickets for user %s: %s", current_user.id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error fetching tickets.")
 
 
 @router.get("/all", response_model=List[TicketBrief])
 def get_all_tickets(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=500),
     _: User = Depends(require_roles(UserRole.staff, UserRole.admin)),
     db: Session = Depends(get_db),
 ):
     try:
-        tickets = db.query(Ticket).options(
-            joinedload(Ticket.student),
-            joinedload(Ticket.category)
-        ).all()
+        tickets = (
+            db.query(Ticket)
+            .options(joinedload(Ticket.student), joinedload(Ticket.category))
+            .order_by(Ticket.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         return tickets
-    except SQLAlchemyError as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except SQLAlchemyError as exc:
+        logger.error("DB error fetching all tickets: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error fetching tickets.")
 
 
 @router.get("/{ticket_id}", response_model=TicketResponse)
@@ -213,8 +245,9 @@ def get_ticket_detail(
             attachments=ticket.attachments,
             notes=ticket.notes
         )
-    except SQLAlchemyError as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except SQLAlchemyError as exc:
+        logger.error("DB error fetching ticket %s: %s", ticket_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error fetching ticket.")
 
 
 @router.patch("/{ticket_id}/status", response_model=TicketBrief)
@@ -287,7 +320,7 @@ async def update_ticket_status(
                 for attachment in (ticket.attachments or [])
             )
             if not has_generated_letter:
-                generated_letter = generate_academic_letter_pdf_from_ticket(ticket, output_dir="uploads")
+                generated_letter = generate_academic_letter_pdf_from_ticket(ticket, output_dir=_UPLOAD_DIR)
                 db.add(Attachment(
                     ticket_id=ticket.id,
                     uploaded_by_id=current_user.id,
@@ -297,6 +330,18 @@ async def update_ticket_status(
 
         db.commit()
         db.refresh(ticket)
+
+        # Audit log for status change
+        if payload.status and old_status != payload.status:
+            audit(
+                db,
+                action="ticket.status_changed",
+                actor_id=current_user.id,
+                resource_type="ticket",
+                resource_id=ticket.id,
+                detail=f"{old_status.value} -> {payload.status.value}",
+            )
+            db.commit()
 
         # Trigger Notifications & Email if status changed
         if payload.status and old_status != payload.status:
@@ -309,7 +354,7 @@ async def update_ticket_status(
             else:
                 notif_title = f"Status tiket {ticket_number} diperbarui"
                 notif_msg = f"Status permohonan '{ticket.title}' diubah dari '{old_status.value}' menjadi '{payload.status.value}'."
-            background_tasks.add_task(create_and_push_notification, db, ticket.student_id, notif_title, notif_msg)
+            background_tasks.add_task(create_and_push_notification, ticket.student_id, notif_title, notif_msg)
 
             # 2. SMTP Transactional Email
             email_subject = "Ticket Status Updated"
@@ -332,14 +377,16 @@ IPB Academic Help Center
             background_tasks.add_task(send_email, ticket.student.email, email_subject, email_content)
 
         return ticket
-    except SQLAlchemyError as e:
+    except SQLAlchemyError as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    except Exception as e:
+        logger.error("DB error updating ticket %s: %s", ticket_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error updating ticket.")
+    except Exception as exc:
         db.rollback()
-        if isinstance(e, HTTPException):
+        if isinstance(exc, HTTPException):
             raise
-        raise HTTPException(status_code=500, detail=f"Gagal memperbarui tiket: {str(e)}")
+        logger.error("Unexpected error updating ticket %s: %s", ticket_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update ticket.")
 
 
 @router.post("/{ticket_id}/notes", response_model=TicketNoteResponse)
@@ -383,7 +430,7 @@ async def create_ticket_note(
             # 1. DB & WebSocket Notification
             notif_title = f"Balasan baru untuk tiket {ticket_number}"
             notif_msg = f"{current_user.nama} membalas permohonan '{ticket.title}': \"{payload.content[:60]}...\""
-            background_tasks.add_task(create_and_push_notification, db, ticket.student_id, notif_title, notif_msg)
+            background_tasks.add_task(create_and_push_notification, ticket.student_id, notif_title, notif_msg)
 
             # 2. SMTP Transactional Email
             email_subject = "New Response on Your Ticket"
@@ -405,9 +452,10 @@ IPB Academic Help Center
             background_tasks.add_task(send_email, ticket.student.email, email_subject, email_content)
 
         return new_note
-    except SQLAlchemyError as e:
+    except SQLAlchemyError as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error("DB error creating note on ticket %s: %s", ticket_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error creating note.")
 
 
 @router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -426,6 +474,7 @@ def delete_ticket(
 
         db.delete(ticket)
         db.commit()
-    except SQLAlchemyError as e:
+    except SQLAlchemyError as exc:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error("DB error deleting ticket %s: %s", ticket_id, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database error deleting ticket.")

@@ -19,4 +19,4 @@ class Attachment(Base):
 
     @property
     def url(self) -> str:
-        return f"/files/{self.filepath}"
+        return f"/uploads/{self.filepath}"

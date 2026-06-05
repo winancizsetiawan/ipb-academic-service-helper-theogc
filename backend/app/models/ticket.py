@@ -25,8 +25,11 @@ class Ticket(Base):
     student = relationship("User", foreign_keys=[student_id], lazy="joined")
     staff = relationship("User", foreign_keys=[staff_id], lazy="joined")
     category = relationship("Category", lazy="joined")
-    notes = relationship("TicketNote", back_populates="ticket", lazy="joined")
-    attachments = relationship("Attachment", back_populates="ticket", lazy="joined")
+    # Use "select" for collection relationships to avoid cartesian-product blowup
+    # when multiple collections are joined simultaneously.  Controllers use
+    # explicit joinedload() on these when they need them.
+    notes = relationship("TicketNote", back_populates="ticket", lazy="select")
+    attachments = relationship("Attachment", back_populates="ticket", lazy="select")
 
     @property
     def nama(self):

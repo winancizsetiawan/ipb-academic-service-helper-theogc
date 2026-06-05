@@ -25,6 +25,7 @@ from app.models.ticket_note import TicketNote
 from app.models.attachment import Attachment
 from app.models.discussion import Discussion, DiscussionReply
 from app.models.notification import Notification
+from app.models.audit_log import AuditLog
 
 target_metadata = Base.metadata
 
