@@ -6,7 +6,6 @@ from fastapi.responses import FileResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.database.session import get_db
@@ -121,8 +120,12 @@ async def upload_file(
             "filename": new_attachment.filename,
             "url": new_attachment.url,
         }
-    except SQLAlchemyError:
+    except Exception as exc:
         db.rollback()
+        logger.error(
+            "UPLOAD ERROR user=%s file=%s type=%s detail=%s",
+            current_user.id, unique_filename, type(exc).__name__, exc, exc_info=True,
+        )
         if os.path.exists(filepath):
             os.remove(filepath)
         raise HTTPException(

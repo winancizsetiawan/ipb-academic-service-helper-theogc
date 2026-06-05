@@ -194,6 +194,9 @@ async def generic_exception_handler(request: Request, exc: Exception) -> JSONRes
 # ---------------------------------------------------------------------------
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    # WebSocket upgrade requests must not be intercepted by HTTP middleware
+    if request.scope.get("type") != "http":
+        return await call_next(request)
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
