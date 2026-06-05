@@ -7,7 +7,7 @@ import ProgressBar from '@/components/ui/ProgressBar'
 import Timeline from '@/components/ui/Timeline'
 import { useToast } from '@/hooks/useToast'
 import ToastContainer from '@/components/ui/Toast'
-import { api } from '@/contexts/AuthContext'
+import { api, downloadAttachment } from '@/contexts/AuthContext'
 
 const STATUS_LABEL = { open: 'Open', progress: 'In Progress', resolved: 'Resolved', rejected: 'Rejected' }
 const STATUS_BADGE  = { open: 'open', progress: 'progress', resolved: 'resolved', rejected: 'rejected' }
@@ -276,14 +276,11 @@ export default function Track() {
                       {ticketDetail.attachments.map(att => (
                         <div key={att.id} className="flex items-center justify-between bg-blue-50/20 border border-blue-100 rounded px-2.5 py-1.5">
                           <span className="text-[10px] text-gray-700 font-medium truncate max-w-[200px]">📄 {att.filename}</span>
-                          <a
-                            href={`${api.defaults.baseURL.replace('/api/v1', '')}${att.url}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download
-                            className="text-[10px] font-bold text-ipb-600 hover:text-ipb-800 hover:underline">
+                          <button
+                            onClick={() => downloadAttachment(att).catch(() => toast('❌ Gagal mengunduh file', 'error'))}
+                            className="text-[10px] font-bold text-ipb-600 hover:text-ipb-800 hover:underline bg-transparent border-none cursor-pointer p-0">
                             Unduh
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>

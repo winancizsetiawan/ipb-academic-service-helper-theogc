@@ -52,7 +52,7 @@ export default function Profile() {
                     {user?.initials || 'QR'}
                   </div>
                 </div>
-                <h2 className="text-[16px] font-bold text-ipb-900">{user?.name || 'Quina Rizky Dae Yuena Siregar'}</h2>
+                <h2 className="text-[16px] font-bold text-ipb-900">{user?.nama || '—'}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge v="student">Mahasiswa</Badge>
                   <span className="text-[10px] text-gray-400">Aktif sejak 2023</span>
@@ -76,7 +76,7 @@ export default function Profile() {
             <div className="bg-white rounded-lg border border-ipb-50 shadow-sm p-5">
               <h3 className="text-[13px] font-bold text-ipb-900 mb-3.5">⚙️ Pengaturan Akun</h3>
               <FormGroup label="Nama Lengkap">
-                <Input defaultValue={user?.name || 'Quina Rizky Dae Yuena Siregar'} />
+                <Input defaultValue={user?.nama || ''} />
               </FormGroup>
               <div className="grid grid-cols-2 gap-3">
                 <FormGroup label="Email">

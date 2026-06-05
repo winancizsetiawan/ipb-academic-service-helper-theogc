@@ -65,7 +65,7 @@ export default function Sidebar({ type = 'staff' }) {
         </div>
         <div>
           <div className="text-white text-[11px] font-semibold leading-snug">
-            {user?.name?.split(' ').slice(0,2).join(' ') || (isAdmin ? 'Winanci Z.S.' : 'Ghanianda W.')}
+            {user?.nama?.split(' ').slice(0,2).join(' ') || (isAdmin ? 'Admin' : 'Staff')}
           </div>
           <div className="mt-1">
             <Badge v={isAdmin ? 'admin' : 'staff'}>{isAdmin ? 'Admin' : 'Staff'}</Badge>

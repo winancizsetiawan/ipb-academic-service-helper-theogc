@@ -12,6 +12,23 @@ export const api = axios.create({
   withCredentials: true,
 })
 
+/**
+ * Download an authenticated file attachment.
+ * Calls the authenticated /uploads/:filepath endpoint and triggers a browser
+ * download via a temporary blob URL.
+ */
+export async function downloadAttachment(att) {
+  const response = await api.get(att.url, { responseType: 'blob' })
+  const blobUrl = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = blobUrl
+  link.download = att.filename || 'download'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(blobUrl)
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(localStorage.getItem('token') || null)
@@ -50,7 +67,7 @@ export function AuthProvider({ children }) {
     }
   }, [token])
 
-  // Fetch user profile on token change
+  // Restore session from stored token on mount
   useEffect(() => {
     const fetchUser = async () => {
       if (!token) {
@@ -60,8 +77,7 @@ export function AuthProvider({ children }) {
       try {
         const response = await api.get('/auth/me')
         setUser(response.data)
-      } catch (error) {
-        console.error("Failed to fetch user:", error)
+      } catch {
         logout()
       } finally {
         setLoading(false)
@@ -70,14 +86,13 @@ export function AuthProvider({ children }) {
     fetchUser()
   }, [token])
 
-  // API calls for notifications
   const fetchNotifications = async () => {
     if (!token) return
     try {
       const res = await api.get('/notifications')
       setNotifications(res.data)
-    } catch (err) {
-      console.error("Failed to fetch notifications:", err)
+    } catch {
+      // Silent — polling will retry
     }
   }
 
@@ -86,8 +101,8 @@ export function AuthProvider({ children }) {
     try {
       const res = await api.get('/notifications/unread-count')
       setUnreadCount(res.data.unread_count)
-    } catch (err) {
-      console.error("Failed to fetch unread count:", err)
+    } catch {
+      // Silent
     }
   }
 
@@ -95,12 +110,10 @@ export function AuthProvider({ children }) {
     if (!token) return
     try {
       await api.patch(`/notifications/${id}/read`)
-      setNotifications(prev =>
-        prev.map(n => n.id === id ? { ...n, is_read: true } : n)
-      )
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
       setUnreadCount(prev => Math.max(0, prev - 1))
-    } catch (err) {
-      console.error("Failed to mark notification as read:", err)
+    } catch {
+      // Silent
     }
   }
 
@@ -110,15 +123,14 @@ export function AuthProvider({ children }) {
       const res = await api.patch('/notifications/read-all')
       setNotifications(res.data)
       setUnreadCount(0)
-    } catch (err) {
-      console.error("Failed to mark all notifications as read:", err)
+    } catch {
+      // Silent
     }
   }
 
-  // Manage Websocket and Polling
+  // WebSocket + polling for notifications
   useEffect(() => {
     if (!token || !user) {
-      // Clean up connection and polling
       if (wsRef.current) wsRef.current.close()
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current)
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
@@ -127,29 +139,21 @@ export function AuthProvider({ children }) {
       return
     }
 
-    // Initial fetch
     fetchNotifications()
     fetchUnreadCount()
 
-    // 1. WebSocket Setup
     const connectWS = () => {
-      const baseURL = API_BASE_WITH_PATH
-      // Construct WebSocket URL
-      const wsURL = baseURL.replace(/^http/, 'ws') + '/notifications/ws/' + token
-
-      console.log(`Connecting to WebSocket: ${wsURL}`)
+      // JWT sent as first message AFTER connection (not in the URL path)
+      const wsURL = API_BASE_WITH_PATH.replace(/^http/, 'ws') + '/notifications/ws'
       const ws = new WebSocket(wsURL)
       wsRef.current = ws
 
       ws.onopen = () => {
-        console.log("WebSocket connection established successfully")
-        // When connected, stop active aggressive polling
+        // Authenticate by sending the token as the first message
+        ws.send(token)
         if (pollingIntervalRef.current) {
           clearInterval(pollingIntervalRef.current)
-          // Maintain a lazy check/refresh every 60s
-          pollingIntervalRef.current = setInterval(() => {
-            fetchUnreadCount()
-          }, 60000)
+          pollingIntervalRef.current = setInterval(fetchUnreadCount, 60000)
         }
       }
 
@@ -157,41 +161,32 @@ export function AuthProvider({ children }) {
         try {
           const payload = JSON.parse(event.data)
           if (payload.type === 'notification') {
-            const newNotif = payload.data
-            // Format for UI consistency
-            setNotifications(prev => [newNotif, ...prev])
+            setNotifications(prev => [payload.data, ...prev])
             setUnreadCount(prev => prev + 1)
           }
-        } catch (e) {
-          console.error("Error parsing WS message:", e)
+        } catch {
+          // Ignore malformed messages
         }
       }
 
-      ws.onerror = (err) => {
-        console.error("WebSocket error:", err)
+      ws.onerror = () => {
+        // Error details are not meaningful here; onclose handles reconnect
       }
 
       ws.onclose = () => {
-        console.log("WebSocket connection closed. Initiating fallback/reconnect...")
-        // Start fallback polling immediately if WebSocket is closed
         startFallbackPolling()
-        // Attempt to reconnect in 5s
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWS()
-        }, 5000)
+        reconnectTimeoutRef.current = setTimeout(connectWS, 5000)
       }
     }
 
     const startFallbackPolling = () => {
       if (pollingIntervalRef.current) clearInterval(pollingIntervalRef.current)
-      // Poll every 10 seconds as a reliable fallback
       pollingIntervalRef.current = setInterval(() => {
         fetchNotifications()
         fetchUnreadCount()
       }, 10000)
     }
 
-    // Initiate first connection
     connectWS()
 
     return () => {
@@ -208,7 +203,7 @@ export function AuthProvider({ children }) {
     localStorage.setItem('token', access_token)
 
     const userResponse = await api.get('/auth/me', {
-      headers: { Authorization: `Bearer ${access_token}` }
+      headers: { Authorization: `Bearer ${access_token}` },
     })
     setUser(userResponse.data)
     return userResponse.data
@@ -218,6 +213,18 @@ export function AuthProvider({ children }) {
     setUser(null)
     setToken(null)
     localStorage.removeItem('token')
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div
+          aria-label="Memuat..."
+          role="status"
+          className="w-10 h-10 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"
+        />
+      </div>
+    )
   }
 
   return (
@@ -232,9 +239,9 @@ export function AuthProvider({ children }) {
       fetchNotifications,
       fetchUnreadCount,
       markAsRead,
-      markAllAsRead
+      markAllAsRead,
     }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   )
 }

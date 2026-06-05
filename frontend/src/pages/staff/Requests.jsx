@@ -7,7 +7,7 @@ import { useToast } from '@/hooks/useToast'
 import { useConfirm } from '@/hooks/useConfirm'
 import ToastContainer from '@/components/ui/Toast'
 import ConfirmModal from '@/components/ui/ConfirmModal'
-import { api } from '@/contexts/AuthContext'
+import { api, downloadAttachment } from '@/contexts/AuthContext'
 
 export default function StaffRequests() {
   const [tickets, setTickets] = useState([])
@@ -257,13 +257,11 @@ export default function StaffRequests() {
                           <p className="text-[11px] font-semibold text-gray-700 truncate mt-0.5">{att.filename}</p>
                         </div>
                       </div>
-                      <a 
-                        href={`${api.defaults.baseURL.replace('/api/v1', '')}${att.url}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-bold text-blue-600 hover:underline shrink-0 ml-2">
+                      <button
+                        onClick={() => downloadAttachment(att).catch(() => toast('❌ Gagal mengunduh file', 'error'))}
+                        className="text-[11px] font-bold text-blue-600 hover:underline shrink-0 ml-2 bg-transparent border-none cursor-pointer p-0">
                         Unduh File
-                      </a>
+                      </button>
                     </div>
                   ))}
                 </div>

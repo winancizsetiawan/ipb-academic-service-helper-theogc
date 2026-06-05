@@ -33,7 +33,15 @@ function RequireAuth({ children, role }) {
   const { user } = useAuth()
 
   if (!user) return <Navigate to="/login" replace />
-  if (role && user.role !== role) return <Navigate to="/login" replace />
+
+  if (role && user.role !== role) {
+    // Redirect to the user's actual home page, not back to /login
+    const roleHome =
+      user.role === 'staff' ? '/staff/dashboard'
+      : user.role === 'admin' ? '/admin/dashboard'
+      : '/faq'
+    return <Navigate to={roleHome} replace />
+  }
 
   return children
 }

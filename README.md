@@ -1,99 +1,61 @@
 # IPB Academic Help Center
 
-Monorepo **full-stack** untuk portal bantuan akademik IPB: mahasiswa mengajukan tiket & memantau status, staff mengelola antrean, admin memantau layanan. UI dirancang mengikuti gaya dashboard kampus modern (biru IPB, kartu putih, tipografi formal).
+Monorepo full-stack untuk portal bantuan akademik IPB: mahasiswa mengajukan tiket & memantau status, staff mengelola antrean, admin memantau layanan.
 
 ## Struktur
 
-- `backend/` — **FastAPI + SQLAlchemy + PostgreSQL + JWT** (arsitektur modular: routes → services → repositories → models + DTO schemas). OOP melalui kelas layanan/repositori dan *controller* tipis (`app/controllers/ticket_controller.py`).
-- `frontend/` — **React + Vite + TypeScript + Tailwind + Zustand + RHF + Zod + Framer Motion + Lucide**.
-- `prisma/schema.prisma` — **dokumentasi/model data** yang selaras dengan tabel PostgreSQL (ORM aktif di backend adalah **SQLAlchemy**, bukan Prisma Client).
+- `backend/` — FastAPI + SQLAlchemy + PostgreSQL + Alembic + JWT
+- `frontend/` — React + Vite + JavaScript + Tailwind CSS
 
 ## Prasyarat
 
 - Node.js 20+
 - Python 3.11+
-- Docker (opsional, untuk PostgreSQL lokal)
+- Docker (untuk PostgreSQL lokal)
 
-## Database lokal (Docker)
+## Menjalankan secara lokal
+
+### 1. Database PostgreSQL (Docker)
 
 ```bash
 docker compose up -d
 ```
 
-Default koneksi: `postgresql+psycopg2://postgres:postgres@localhost:5432/ipb_help`
+Default: `postgresql://postgres:postgres@localhost:5433/ipb_help`
 
-## Backend
+### 2. Backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# Linux/Mac:
+source .venv/bin/activate
+# Windows:
+.venv\Scripts\activate
+
 pip install -r requirements.txt
 cp .env.example .env
+# Edit .env — pastikan DATABASE_URL benar dan JWT_SECRET diganti
 ```
 
-Jalankan migrasi skema (dev): tabel dibuat otomatis saat startup aplikasi (`Base.metadata.create_all`).
-
-Seed data demo (**menghapus seluruh tabel** lalu mengisi ulang — hanya untuk lingkungan pengembangan):
+Jalankan migrasi (wajib sebelum pertama kali start):
 
 ```bash
-cd backend
-source .venv/bin/activate
-python -m app.seed
+alembic upgrade head
 ```
 
-Akun demo (password sama: `Password123!`):
-
-| Peran     | Email               |
-|----------|---------------------|
-| Mahasiswa | `quina@apps.ipb.ac.id` |
-| Staff    | `staff@ipb.ac.id`   |
-| Admin    | `admin@ipb.ac.id`   |
-
-Jalankan API:
+Aktifkan demo seed untuk development (`ENABLE_DEMO_SEEDING=true` di `.env`), lalu jalankan:
 
 ```bash
-cd backend
-source .venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 ```
 
-- Health: `GET http://127.0.0.1:8000/health`
-- Dokumentasi interaktif: `http://127.0.0.1:8000/docs` (OpenAPI)
-- WebSocket notifikasi (token query): `ws://127.0.0.1:8000/api/v1/ws?token=<JWT>`
-- File statis hasil unggah: `http://127.0.0.1:8000/files/...`
+- Health check: `GET http://127.0.0.1:8000/health`
+- Dokumentasi API: `http://127.0.0.1:8000/docs`
+- WebSocket notifikasi: `ws://127.0.0.1:8000/api/v1/notifications/ws` (kirim token JWT sebagai pesan pertama setelah connect)
+- Download file: `GET http://127.0.0.1:8000/api/v1/uploads/{filepath}` (perlu Auth header)
 
-### Variabel lingkungan backend (`backend/.env`)
-
-| Variabel | Keterangan |
-|----------|------------|
-| `DATABASE_URL` | URL SQLAlchemy Postgres |
-| `JWT_SECRET` | Rahasia penandatanganan JWT |
-| `JWT_ALGORITHM` | Default `HS256` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Masa berlaku token |
-| `CORS_ORIGINS` | Daftar origin dipisah koma (mis. `http://localhost:5173`) |
-| `SMTP_*` | Opsional — jika kosong, email hanya di-log |
-| `UPLOAD_DIR` | Folder penyimpanan unggahan |
-
-### Ringkasan API (v1, prefiks `/api/v1`)
-
-- `POST /auth/login` — body `{ email, password, role }`
-- `GET /auth/me` — profil pengguna terautentikasi
-- `GET/POST /categories` — daftar kategori; buat kategori (admin)
-- `GET/POST /tickets` — tiket mahasiswa (JSON, lampiran lewat `attachment_urls` dari `/uploads`)
-- `GET /tickets/me` — daftar tiket saya
-- `GET /tickets/me/item/{public_id}` — detail tiket
-- `GET/POST /tickets/me/item/{public_id}/messages` — percakapan tiket
-- `GET /staff/dashboard/metrics` — ringkasan staff
-- `GET/POST/PATCH /staff/tickets/...` — antrian staff
-- `GET /faqs/public`, `GET /faqs/popular`, `POST /faqs/{id}/view`
-- `GET/POST /discussions` + balasan + resolve (staff)
-- `GET /notifications`, `POST /notifications/read-all`
-- `POST /uploads` — multipart file → `{ urls: ["/files/..."] }`
-- `GET /admin/analytics/summary`, `GET /admin/analytics/staff-performance`, `GET /activity/logs`
-- `GET /search?q=` — pencarian FAQ + diskusi
-
-## Frontend
+### 3. Frontend
 
 ```bash
 cd frontend
@@ -102,173 +64,65 @@ npm install
 npm run dev
 ```
 
-`VITE_API_URL` dikosongkan saat development agar permintaan ke `/api` dan `/files` di-*proxy* oleh Vite ke `http://127.0.0.1:8000` (`vite.config.ts`).
+## Variabel lingkungan
 
-Build produksi:
-
-```bash
-cd frontend
-npm run build
-```
-
-### Deploy (ringkas)
-
-- **Railway (backend)**: set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS` (URL Vercel), jalankan perintah `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- **Vercel (frontend)**: set `VITE_API_URL` ke URL publik Railway; build command `npm run build`, output `frontend/dist`.
-
-## Fitur utama yang sudah terhubung
-
-- JWT + peran (`mahasiswa`, `staff`, `admin`)
-- Tiket layanan + percakapan + notifikasi in-app
-- FAQ publik + popularitas sederhana
-- Diskusi forum dasar
-- Unggah file + URL lampiran pada tiket
-- WebSocket *stub* untuk saluran realtime (klien dapat polling `/notifications/unread-count`)
-- Mode gelap (toggle) + toast + animasi halaman ringan
-- Admin analytics agregat + aktivitas log
-
-## Catatan arsitektur
-
-- **Backend**: pola *clean layering* — route tipis, aturan bisnis di `services/`, akses data di `repositories/`, kontrak API di `schemas/`.
-- **Frontend**: komponen layout reusable (`StudentNavbar`, `StaffShell`) + utilitas Tailwind di `@layer components` (`card-surface`, `ticket-card`, `btn-primary`, …) agar kelas util tidak “berantakan” di JSX.
-
-## Lisensi / penggunaan
-
-Kode ini disediakan sebagai dasar produk internal kampus; sesuaikan kebijakan keamanan (migrasi DB dengan Alembic, hardening JWT, penyimpanan file ke object storage, dsb.) sebelum produksi.
-# IPB Academic Help Center
-
-Monorepo **full-stack** untuk portal bantuan akademik IPB: mahasiswa mengajukan tiket & memantau status, staff mengelola antrean, admin memantau layanan. UI dirancang mengikuti gaya dashboard kampus modern (biru IPB, kartu putih, tipografi formal).
-
-## Struktur
-
-- `backend/` — **FastAPI + SQLAlchemy + PostgreSQL + JWT** (arsitektur modular: routes → services → repositories → models + DTO schemas). OOP melalui kelas layanan/repositori dan *controller* tipis (`app/controllers/ticket_controller.py`).
-- `frontend/` — **React + Vite + TypeScript + Tailwind + Zustand + RHF + Zod + Framer Motion + Lucide**.
-- `prisma/schema.prisma` — **dokumentasi/model data** yang selaras dengan tabel PostgreSQL (ORM aktif di backend adalah **SQLAlchemy**, bukan Prisma Client).
-
-## Prasyarat
-
-- Node.js 20+
-- Python 3.11+
-- Docker (opsional, untuk PostgreSQL lokal)
-
-## Database lokal (Docker)
-
-```bash
-docker compose up -d
-```
-
-Default koneksi: `postgresql+psycopg2://postgres:postgres@localhost:5432/ipb_help`
-
-## Backend
-
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-```
-
-Jalankan migrasi skema (dev): tabel dibuat otomatis saat startup aplikasi (`Base.metadata.create_all`).
-
-Seed data demo (**menghapus seluruh tabel** lalu mengisi ulang — hanya untuk lingkungan pengembangan):
-
-```bash
-cd backend
-source .venv/bin/activate
-python -m app.seed
-```
-
-Akun demo (password sama: `Password123!`):
-
-| Peran     | Email               |
-|----------|---------------------|
-| Mahasiswa | `quina@apps.ipb.ac.id` |
-| Staff    | `staff@ipb.ac.id`   |
-| Admin    | `admin@ipb.ac.id`   |
-
-Jalankan API:
-
-```bash
-cd backend
-source .venv/bin/activate
-uvicorn app.main:app --reload --port 8000
-```
-
-- Health: `GET http://127.0.0.1:8000/health`
-- Dokumentasi interaktif: `http://127.0.0.1:8000/docs` (OpenAPI)
-- WebSocket notifikasi (token query): `ws://127.0.0.1:8000/api/v1/ws?token=<JWT>`
-- File statis hasil unggah: `http://127.0.0.1:8000/files/...`
-
-### Variabel lingkungan backend (`backend/.env`)
+### Backend (`backend/.env`)
 
 | Variabel | Keterangan |
-|----------|------------|
-| `DATABASE_URL` | URL SQLAlchemy Postgres |
-| `JWT_SECRET` | Rahasia penandatanganan JWT |
+|---|---|
+| `DATABASE_URL` | URL SQLAlchemy PostgreSQL |
+| `JWT_SECRET` | Secret JWT — **wajib diganti di produksi** |
 | `JWT_ALGORITHM` | Default `HS256` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Masa berlaku token |
-| `CORS_ORIGINS` | Daftar origin dipisah koma (mis. `http://localhost:5173`) |
-| `SMTP_*` | Opsional — jika kosong, email hanya di-log |
-| `UPLOAD_DIR` | Folder penyimpanan unggahan |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Default `30` |
+| `CORS_ORIGINS` | Origin yang diizinkan, pisahkan koma (mis. `https://app.vercel.app`) |
+| `UPLOAD_DIR` | Path folder upload (gunakan path volume Railway di produksi) |
+| `ENABLE_DEMO_SEEDING` | `true` = seed akun demo saat startup (development only) |
+| `SMTP_*` | Konfigurasi email (opsional) |
 
-### Ringkasan API (v1, prefiks `/api/v1`)
+### Frontend (`frontend/.env`)
 
-- `POST /auth/login` — body `{ email, password, role }`
-- `GET /auth/me` — profil pengguna terautentikasi
-- `GET/POST /categories` — daftar kategori; buat kategori (admin)
-- `GET/POST /tickets` — tiket mahasiswa (JSON, lampiran lewat `attachment_urls` dari `/uploads`)
-- `GET /tickets/me` — daftar tiket saya
-- `GET /tickets/me/item/{public_id}` — detail tiket
-- `GET/POST /tickets/me/item/{public_id}/messages` — percakapan tiket
-- `GET /staff/dashboard/metrics` — ringkasan staff
-- `GET/POST/PATCH /staff/tickets/...` — antrian staff
-- `GET /faqs/public`, `GET /faqs/popular`, `POST /faqs/{id}/view`
-- `GET/POST /discussions` + balasan + resolve (staff)
-- `GET /notifications`, `POST /notifications/read-all`
-- `POST /uploads` — multipart file → `{ urls: ["/files/..."] }`
-- `GET /admin/analytics/summary`, `GET /admin/analytics/staff-performance`, `GET /activity/logs`
-- `GET /search?q=` — pencarian FAQ + diskusi
+| Variabel | Keterangan |
+|---|---|
+| `VITE_API_URL` | URL API backend termasuk `/api/v1` |
 
-## Frontend
+## Deploy
+
+### Railway (backend)
+
+1. Set environment variables di Railway dashboard: `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS` (URL Vercel frontend).
+2. Pastikan `ENABLE_DEMO_SEEDING=false` di produksi.
+3. `Procfile` sudah dikonfigurasi: `bash start.sh` (menjalankan `alembic upgrade head` lalu `uvicorn`).
+4. Untuk storage persisten: pasang Railway Volume di path yang sama dengan `UPLOAD_DIR`.
+
+#### Rollback database
 
 ```bash
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
+# Downgrade satu step
+alembic downgrade -1
+
+# Downgrade ke revision tertentu
+alembic downgrade <revision_id>
+
+# Lihat history
+alembic history
 ```
 
-`VITE_API_URL` dikosongkan saat development agar permintaan ke `/api` dan `/files` di-*proxy* oleh Vite ke `http://127.0.0.1:8000` (`vite.config.ts`).
+### Vercel (frontend)
 
-Build produksi:
+- Build command: `npm run build`
+- Output directory: `frontend/dist`
+- Environment variable: `VITE_API_URL=https://your-backend.railway.app/api/v1`
 
-```bash
-cd frontend
-npm run build
-```
+## CI/CD
 
-### Deploy (ringkas)
+GitHub Actions (`.github/workflows/ci.yml`) menjalankan:
+- Backend: install deps → jalankan migrasi ke DB test → docker build
+- Frontend: install deps → build produksi
 
-- **Railway (backend)**: set `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS` (URL Vercel), jalankan perintah `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- **Vercel (frontend)**: set `VITE_API_URL` ke URL publik Railway; build command `npm run build`, output `frontend/dist`.
+## Catatan keamanan produksi
 
-## Fitur utama yang sudah terhubung
-
-- JWT + peran (`mahasiswa`, `staff`, `admin`)
-- Tiket layanan + percakapan + notifikasi in-app
-- FAQ publik + popularitas sederhana
-- Diskusi forum dasar
-- Unggah file + URL lampiran pada tiket
-- WebSocket *stub* untuk saluran realtime (klien dapat polling `/notifications/unread-count`)
-- Mode gelap (toggle) + toast + animasi halaman ringan
-- Admin analytics agregat + aktivitas log
-
-## Catatan arsitektur
-
-- **Backend**: pola *clean layering* — route tipis, aturan bisnis di `services/`, akses data di `repositories/`, kontrak API di `schemas/`.
-- **Frontend**: komponen layout reusable (`StudentNavbar`, `StaffShell`) + utilitas Tailwind di `@layer components` (`card-surface`, `ticket-card`, `btn-primary`, …) agar kelas util tidak “berantakan” di JSX.
-
-## Lisensi / penggunaan
-
-Kode ini disediakan sebagai dasar produk internal kampus; sesuaikan kebijakan keamanan (migrasi DB dengan Alembic, hardening JWT, penyimpanan file ke object storage, dsb.) sebelum produksi.
+- `JWT_SECRET` harus string random panjang: `python -c "import secrets; print(secrets.token_hex(32))"`
+- `CORS_ORIGINS` harus berisi URL spesifik (bukan `*`)
+- `ENABLE_DEMO_SEEDING` harus `false`
+- File upload disajikan melalui endpoint terauthentikasi (`/api/v1/uploads/{filepath}`)
+- Jangan commit `.env` ke git

@@ -29,7 +29,7 @@ export default function PanelHeader({ title, subtitle, type = 'staff', actions }
             {user?.initials || (isAdmin ? 'WZ' : 'GW')}
           </div>
           <div className="text-white text-[10px] font-semibold">
-            {user?.name?.split(' ').slice(0,2).join(' ')} · {isAdmin ? 'Admin' : 'Staff'}
+            {user?.nama?.split(' ').slice(0,2).join(' ')} · {isAdmin ? 'Admin' : 'Staff'}
           </div>
         </Link>
       </div>
