@@ -9,7 +9,6 @@ const API_BASE_WITH_PATH = /\/api\/v1$/.test(API_BASE) ? API_BASE : API_BASE + '
 
 export const api = axios.create({
   baseURL: API_BASE_WITH_PATH,
-  withCredentials: true,
 })
 
 /**

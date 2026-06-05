@@ -7,9 +7,10 @@ class Settings(BaseSettings):
     JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    # Comma-separated list of allowed CORS origins. Use "*" only for local dev.
-    # Production example: "https://your-app.vercel.app,https://www.your-domain.com"
-    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Comma-separated list of allowed CORS origins.
+    # Defaults to "*" (wildcard) which is safe because auth relies on JWT Bearer
+    # tokens, not cookies. Set to a specific origin in Railway if desired.
+    CORS_ORIGINS: str = "*"
     BASE_URL: str = "http://localhost:5173"
 
     # Upload directory path (use a persistent volume path on Railway)

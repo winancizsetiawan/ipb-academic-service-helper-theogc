@@ -175,11 +175,13 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    # Let HTTPException propagate normally (FastAPI handles it)
     from fastapi import HTTPException as FastAPIHTTPException
+    from fastapi.exception_handlers import http_exception_handler
 
+    # HTTPException is handled by FastAPI's own handler; delegate to it so that
+    # normal 401/403/404 responses are returned as-is.
     if isinstance(exc, FastAPIHTTPException):
-        raise exc
+        return await http_exception_handler(request, exc)
     logger.error("Unexpected error on %s: %s", request.url, exc, exc_info=True)
     return JSONResponse(
         status_code=500,
