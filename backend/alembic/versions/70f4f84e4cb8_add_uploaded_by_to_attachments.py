@@ -19,16 +19,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.add_column("attachments", sa.Column("uploaded_by_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        "fk_attachments_uploaded_by_id_users",
-        "attachments",
-        "users",
-        ["uploaded_by_id"],
-        ["id"],
-    )
-    op.create_index("ix_attachments_uploaded_by_id", "attachments", ["uploaded_by_id"], unique=False)
+    """Upgrade schema — idempotent."""
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_cols = {c["name"] for c in inspector.get_columns("attachments")}
+
+    if "uploaded_by_id" not in existing_cols:
+        op.add_column("attachments", sa.Column("uploaded_by_id", sa.Integer(), nullable=True))
+
+    existing_fks = {fk["name"] for fk in inspector.get_foreign_keys("attachments")}
+    if "fk_attachments_uploaded_by_id_users" not in existing_fks:
+        op.create_foreign_key(
+            "fk_attachments_uploaded_by_id_users",
+            "attachments",
+            "users",
+            ["uploaded_by_id"],
+            ["id"],
+        )
+
+    existing_indexes = {ix["name"] for ix in inspector.get_indexes("attachments")}
+    if "ix_attachments_uploaded_by_id" not in existing_indexes:
+        op.create_index("ix_attachments_uploaded_by_id", "attachments", ["uploaded_by_id"], unique=False)
 
 
 def downgrade() -> None:
