@@ -66,10 +66,9 @@ async def upload_file(
             detail=f"Extension '{ext}' is not allowed. Supported: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
 
-    # Read entire file into memory for size + MIME checks (max 10 MB is safe)
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
+    # Read entire file content once for reliable size + MIME checks
+    content = await file.read()
+    file_size = len(content)
 
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(
@@ -77,9 +76,7 @@ async def upload_file(
             detail=f"File exceeds maximum size of 10 MB ({file_size / (1024 * 1024):.2f} MB received).",
         )
 
-    header = await file.read(16)
-    await file.seek(0)
-
+    header = content[:16]
     if not _check_mime(header, ext):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -97,8 +94,7 @@ async def upload_file(
 
     try:
         with open(filepath, "wb") as buf:
-            while chunk := await file.read(8192):
-                buf.write(chunk)
+            buf.write(content)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
