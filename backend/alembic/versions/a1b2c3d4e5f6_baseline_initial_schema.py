@@ -20,27 +20,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
+    conn = op.get_context().connection
     inspector = sa.inspect(conn)
     existing_tables = set(inspector.get_table_names())
 
     # Create PostgreSQL enum types idempotently
-    op.execute(
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE userrole AS ENUM ('mahasiswa', 'staff', 'admin');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
-    op.execute(
+    ))
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE faqstatus AS ENUM ('draft', 'published', 'archived');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
-    op.execute(
+    ))
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE ticketstatus AS ENUM ('open', 'progress', 'resolved');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
-    op.execute(
+    ))
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE ticketpriority AS ENUM ('low', 'medium', 'high');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
+    ))
 
     if "users" not in existing_tables:
         op.create_table(
@@ -211,7 +211,7 @@ def downgrade() -> None:
     op.drop_table("tickets")
     op.drop_table("categories")
     op.drop_table("users")
-    op.execute("DROP TYPE IF EXISTS ticketpriority")
-    op.execute("DROP TYPE IF EXISTS ticketstatus")
-    op.execute("DROP TYPE IF EXISTS faqstatus")
-    op.execute("DROP TYPE IF EXISTS userrole")
+    op.execute(sa.text("DROP TYPE IF EXISTS ticketpriority"))
+    op.execute(sa.text("DROP TYPE IF EXISTS ticketstatus"))
+    op.execute(sa.text("DROP TYPE IF EXISTS faqstatus"))
+    op.execute(sa.text("DROP TYPE IF EXISTS userrole"))

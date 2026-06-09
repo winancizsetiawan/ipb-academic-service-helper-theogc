@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
+    conn = op.get_context().connection
     inspector = sa.inspect(conn)
     existing_cols = {c['name'] for c in inspector.get_columns('users')}
 

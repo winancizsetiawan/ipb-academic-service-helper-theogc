@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
+    conn = op.get_context().connection
     inspector = sa.inspect(conn)
     existing_tables = set(inspector.get_table_names())
 
