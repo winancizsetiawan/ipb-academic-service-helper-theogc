@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -15,6 +17,7 @@ from app.models.user import User
 from app.models.attachment import Attachment
 
 limiter = Limiter(key_func=get_remote_address)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
@@ -124,9 +127,14 @@ async def upload_file(
         )
         if os.path.exists(filepath):
             os.remove(filepath)
+        detail = "Database error saving attachment."
+        if isinstance(exc, ProgrammingError):
+            detail = "Database schema for attachments is not up to date. Run latest migrations on Railway."
+        elif isinstance(exc, IntegrityError):
+            detail = "Attachment failed database validation."
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error saving attachment.",
+            detail=detail,
         )
 
 
