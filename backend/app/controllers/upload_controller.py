@@ -48,6 +48,24 @@ def _check_mime(header: bytes, ext: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
+def _friendly_integrity_detail(exc: IntegrityError) -> str:
+    """
+    Convert common Postgres integrity errors into actionable API messages.
+    """
+    orig = getattr(exc, "orig", None)
+    pgcode = getattr(orig, "pgcode", None)
+    diag = getattr(orig, "diag", None)
+    constraint = getattr(diag, "constraint_name", None) if diag else None
+
+    if pgcode == "23503":
+        return f"Database foreign-key validation failed{f' ({constraint})' if constraint else ''}."
+    if pgcode == "23502":
+        return f"Database NOT NULL validation failed{f' ({constraint})' if constraint else ''}."
+    if pgcode == "23505":
+        return f"Database unique-key validation failed{f' ({constraint})' if constraint else ''}."
+    return "Attachment failed database validation."
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 @limiter.limit("20/minute")
 async def upload_file(
@@ -131,7 +149,7 @@ async def upload_file(
         if isinstance(exc, ProgrammingError):
             detail = "Database schema for attachments is not up to date. Run latest migrations on Railway."
         elif isinstance(exc, IntegrityError):
-            detail = "Attachment failed database validation."
+            detail = _friendly_integrity_detail(exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=detail,
