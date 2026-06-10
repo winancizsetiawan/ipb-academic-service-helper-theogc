@@ -11,6 +11,7 @@ already exist so the subsequent column-addition migrations can proceed normally.
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "a1b2c3d4e5f6"
@@ -52,7 +53,7 @@ def upgrade() -> None:
             sa.Column("hashed_password", sa.String(), nullable=False),
             sa.Column(
                 "role",
-                sa.Enum("mahasiswa", "staff", "admin", name="userrole", create_type=False),
+                postgresql.ENUM("mahasiswa", "staff", "admin", name="userrole", create_type=False),
                 nullable=False,
             ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
@@ -87,12 +88,12 @@ def upgrade() -> None:
             sa.Column("description", sa.Text(), nullable=False),
             sa.Column(
                 "status",
-                sa.Enum("open", "progress", "resolved", name="ticketstatus", create_type=False),
+                postgresql.ENUM("open", "progress", "resolved", name="ticketstatus", create_type=False),
                 nullable=False,
             ),
             sa.Column(
                 "priority",
-                sa.Enum("low", "medium", "high", name="ticketpriority", create_type=False),
+                postgresql.ENUM("low", "medium", "high", name="ticketpriority", create_type=False),
                 nullable=False,
             ),
             sa.Column("category_id", sa.Integer(), nullable=True),
@@ -146,7 +147,7 @@ def upgrade() -> None:
             sa.Column("answer", sa.Text(), nullable=False),
             sa.Column(
                 "status",
-                sa.Enum("draft", "published", "archived", name="faqstatus", create_type=False),
+                postgresql.ENUM("draft", "published", "archived", name="faqstatus", create_type=False),
                 nullable=False,
             ),
             sa.Column("view_count", sa.Integer(), nullable=False, server_default="0"),
