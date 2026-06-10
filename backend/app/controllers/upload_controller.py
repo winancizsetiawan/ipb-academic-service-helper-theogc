@@ -56,10 +56,13 @@ def _friendly_integrity_detail(exc: IntegrityError) -> str:
     pgcode = getattr(orig, "pgcode", None)
     diag = getattr(orig, "diag", None)
     constraint = getattr(diag, "constraint_name", None) if diag else None
+    column = getattr(diag, "column_name", None) if diag else None
 
     if pgcode == "23503":
         return f"Database foreign-key validation failed{f' ({constraint})' if constraint else ''}."
     if pgcode == "23502":
+        if column:
+            return f"Database NOT NULL validation failed on column '{column}'."
         return f"Database NOT NULL validation failed{f' ({constraint})' if constraint else ''}."
     if pgcode == "23505":
         return f"Database unique-key validation failed{f' ({constraint})' if constraint else ''}."
