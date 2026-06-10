@@ -93,7 +93,11 @@ export default function Submit() {
         toast(`🎉 File ${file.name} berhasil diunggah!`, 'success')
       } catch (err) {
         console.error(err)
-        const errMsg = err.response?.data?.detail || "Ukuran file melebihi 10MB atau format tidak valid"
+        const errMsg =
+          err.response?.data?.detail ||
+          (err.response?.status >= 500
+            ? "Upload gagal karena gangguan server. Coba lagi sebentar lagi."
+            : "Upload gagal. Periksa format file (PDF/PNG/JPG) dan ukuran maksimal 10MB.")
         setFiles(prev => prev.map(f => f.id === tempId ? {
           ...f,
           loading: false,

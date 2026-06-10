@@ -45,7 +45,7 @@ def _build_letter_body(user, surat_type: dict, form_data: dict) -> str:
     if surat_id == "rekomendasi":
         return (
             f"Mahasiswa {nama} dengan NIM {nim_or_nip} layak mendapatkan rekomendasi dalam rangka "
-            f"{keperluan or '-'}{f' pada program {form_data.get("program")}' if form_data.get("program") else ''}."
+            f"{keperluan or '-'}{(' pada program ' + form_data.get('program')) if form_data.get('program') else ''}."
         )
     if surat_id == "domisili":
         return (

@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 
@@ -5,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from fastapi.responses import FileResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.config import get_settings
 from app.database.session import get_db
@@ -16,6 +17,7 @@ from app.models.user import User
 from app.models.attachment import Attachment
 
 limiter = Limiter(key_func=get_remote_address)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/uploads", tags=["Uploads"])
 
@@ -46,6 +48,27 @@ def _check_mime(header: bytes, ext: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
+def _friendly_integrity_detail(exc: IntegrityError) -> str:
+    """
+    Convert common Postgres integrity errors into actionable API messages.
+    """
+    orig = getattr(exc, "orig", None)
+    pgcode = getattr(orig, "pgcode", None)
+    diag = getattr(orig, "diag", None)
+    constraint = getattr(diag, "constraint_name", None) if diag else None
+    column = getattr(diag, "column_name", None) if diag else None
+
+    if pgcode == "23503":
+        return f"Database foreign-key validation failed{f' ({constraint})' if constraint else ''}."
+    if pgcode == "23502":
+        if column:
+            return f"Database NOT NULL validation failed on column '{column}'."
+        return f"Database NOT NULL validation failed{f' ({constraint})' if constraint else ''}."
+    if pgcode == "23505":
+        return f"Database unique-key validation failed{f' ({constraint})' if constraint else ''}."
+    return "Attachment failed database validation."
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 @limiter.limit("20/minute")
 async def upload_file(
@@ -67,10 +90,9 @@ async def upload_file(
             detail=f"Extension '{ext}' is not allowed. Supported: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
 
-    # Read entire file into memory for size + MIME checks (max 10 MB is safe)
-    file.file.seek(0, 2)
-    file_size = file.file.tell()
-    file.file.seek(0)
+    # Read entire file content once for reliable size + MIME checks
+    content = await file.read()
+    file_size = len(content)
 
     if file_size > MAX_FILE_SIZE:
         raise HTTPException(
@@ -78,9 +100,7 @@ async def upload_file(
             detail=f"File exceeds maximum size of 10 MB ({file_size / (1024 * 1024):.2f} MB received).",
         )
 
-    header = await file.read(16)
-    await file.seek(0)
-
+    header = content[:16]
     if not _check_mime(header, ext):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -98,8 +118,7 @@ async def upload_file(
 
     try:
         with open(filepath, "wb") as buf:
-            while chunk := await file.read(8192):
-                buf.write(chunk)
+            buf.write(content)
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -121,13 +140,22 @@ async def upload_file(
             "filename": new_attachment.filename,
             "url": new_attachment.url,
         }
-    except SQLAlchemyError:
+    except Exception as exc:
         db.rollback()
+        logger.error(
+            "UPLOAD ERROR user=%s file=%s type=%s detail=%s",
+            current_user.id, unique_filename, type(exc).__name__, exc, exc_info=True,
+        )
         if os.path.exists(filepath):
             os.remove(filepath)
+        detail = "Database error saving attachment."
+        if isinstance(exc, ProgrammingError):
+            detail = "Database schema for attachments is not up to date. Run latest migrations on Railway."
+        elif isinstance(exc, IntegrityError):
+            detail = _friendly_integrity_detail(exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database error saving attachment.",
+            detail=detail,
         )
 
 

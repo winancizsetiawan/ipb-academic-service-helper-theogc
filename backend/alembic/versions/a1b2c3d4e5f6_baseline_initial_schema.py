@@ -11,6 +11,7 @@ already exist so the subsequent column-addition migrations can proceed normally.
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "a1b2c3d4e5f6"
@@ -20,27 +21,27 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
+    conn = op.get_context().connection
     inspector = sa.inspect(conn)
     existing_tables = set(inspector.get_table_names())
 
     # Create PostgreSQL enum types idempotently
-    op.execute(
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE userrole AS ENUM ('mahasiswa', 'staff', 'admin');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
-    op.execute(
+    ))
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE faqstatus AS ENUM ('draft', 'published', 'archived');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
-    op.execute(
+    ))
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE ticketstatus AS ENUM ('open', 'progress', 'resolved');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
-    op.execute(
+    ))
+    op.execute(sa.text(
         "DO $$ BEGIN CREATE TYPE ticketpriority AS ENUM ('low', 'medium', 'high');"
         " EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
-    )
+    ))
 
     if "users" not in existing_tables:
         op.create_table(
@@ -52,7 +53,7 @@ def upgrade() -> None:
             sa.Column("hashed_password", sa.String(), nullable=False),
             sa.Column(
                 "role",
-                sa.Enum("mahasiswa", "staff", "admin", name="userrole", create_type=False),
+                postgresql.ENUM("mahasiswa", "staff", "admin", name="userrole", create_type=False),
                 nullable=False,
             ),
             sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=True),
@@ -87,12 +88,12 @@ def upgrade() -> None:
             sa.Column("description", sa.Text(), nullable=False),
             sa.Column(
                 "status",
-                sa.Enum("open", "progress", "resolved", name="ticketstatus", create_type=False),
+                postgresql.ENUM("open", "progress", "resolved", name="ticketstatus", create_type=False),
                 nullable=False,
             ),
             sa.Column(
                 "priority",
-                sa.Enum("low", "medium", "high", name="ticketpriority", create_type=False),
+                postgresql.ENUM("low", "medium", "high", name="ticketpriority", create_type=False),
                 nullable=False,
             ),
             sa.Column("category_id", sa.Integer(), nullable=True),
@@ -146,7 +147,7 @@ def upgrade() -> None:
             sa.Column("answer", sa.Text(), nullable=False),
             sa.Column(
                 "status",
-                sa.Enum("draft", "published", "archived", name="faqstatus", create_type=False),
+                postgresql.ENUM("draft", "published", "archived", name="faqstatus", create_type=False),
                 nullable=False,
             ),
             sa.Column("view_count", sa.Integer(), nullable=False, server_default="0"),
@@ -211,7 +212,7 @@ def downgrade() -> None:
     op.drop_table("tickets")
     op.drop_table("categories")
     op.drop_table("users")
-    op.execute("DROP TYPE IF EXISTS ticketpriority")
-    op.execute("DROP TYPE IF EXISTS ticketstatus")
-    op.execute("DROP TYPE IF EXISTS faqstatus")
-    op.execute("DROP TYPE IF EXISTS userrole")
+    op.execute(sa.text("DROP TYPE IF EXISTS ticketpriority"))
+    op.execute(sa.text("DROP TYPE IF EXISTS ticketstatus"))
+    op.execute(sa.text("DROP TYPE IF EXISTS faqstatus"))
+    op.execute(sa.text("DROP TYPE IF EXISTS userrole"))
